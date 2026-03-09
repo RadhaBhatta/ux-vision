@@ -8,27 +8,25 @@
   },
   "categories": [
     "Other"
-    
   ],
-  "activationEvents": [],
   "main": "./out/extension.js",
-  "onView":"uxVisionView",
+  "activationEvents": [],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "ux-vision-explorer", 
-          "title": "UX Vision",
-          "icon": "media/icon.svg" 
+          "id":"ux-vision-new",
+          "title":"UX Vision",
+          "icon":"$(search)"
         }
       ]
     },
     "views": {
-      "ux-vision-explorer": [ 
+      "ux-vision-new": [
         {
-          "type": "webview",
-          "id": "uxVisionView",
-          "name": "Audit Dashboard"
+          "type":"webview",
+          "id":"uxVisionView",
+          "name":"Audit Dashboard"
         }
       ]
     }
@@ -41,13 +39,12 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "build:webview": "cd webview && npm run build",
-     "build": "npm run build:webview && npm run compile"
-   
+    "build": "npm run build:webview && npm run compile"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.80.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.3",

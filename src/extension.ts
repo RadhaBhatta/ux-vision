@@ -1,98 +1,61 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
+import * as vscode from "vscode";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-
-/**
- * Helper: Converts the Base64 string from React into the 
- * Uint8Array required by the VS Code Language Model API.
- */
-function base64ToUint8Array(base64: string): Uint8Array {
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-}
+// 1. Initialize Gemini Utility
+const setupGemini = (apiKey: string) => {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  return genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+};
 
 export function activate(context: vscode.ExtensionContext) {
-    // 1. Register the Start Command
-    let disposable = vscode.commands.registerCommand('ux-vision.start', () => {
-        const panel = vscode.window.createWebviewPanel(
-            'uxVision',
-            'UX-Vision Dashboard',
-            vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                localResourceRoots: [
-                    vscode.Uri.file(path.join(context.extensionPath, 'webview', 'dist'))
-                ]
-            }
-        );
+  // Use a secret or a hardcoded key for now
+  const model = setupGemini("AIzaSyCIvAg_B6rWMVjjpVnvse2XEtAC7kl1zac");
 
-        // 2. Set the HTML Content
-        panel.webview.html = getWebviewContent(panel.webview, context);
+  // 2. Register the Sidebar Provider
+  const provider = {
+    resolveWebviewView: (webviewView: vscode.WebviewView) => {
+      webviewView.webview.options = { enableScripts: true };
+      webviewView.webview.html = getHtml(webviewView.webview, context.extensionUri);
 
-        // 3. Handle messages from React
-        panel.webview.onDidReceiveMessage(async (message) => {
-            if (message.command === 'analyzeUX') {
-                await handleVisionAnalysis(panel, message);
-            }
-        }, undefined, context.subscriptions);
-    });
-
-    context.subscriptions.push(disposable);
-}
-
-async function handleVisionAnalysis(panel: vscode.WebviewPanel, data: any) {
-    try {
-        const [model] = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
-        
-        // Prepare the binary image data
-        const rawBase64 = data.screenshot.split(',')[1]; 
-        const imageData = base64ToUint8Array(rawBase64);
-
-        const messages = [
-            vscode.LanguageModelChatMessage.User([
-                new vscode.LanguageModelTextPart(
-                    `Compare this UI screenshot with this code:\n${data.code}`
-                ),
-                // Correct 2026 API usage
-                new vscode.LanguageModelDataPart(imageData, 'image/png')
-            ])
-        ];
-
-        const response = await model.sendRequest(messages, {}, new vscode.CancellationTokenSource().token);
-        
-        for await (const fragment of response.text) {
-            panel.webview.postMessage({ command: 'aiDelta', data: fragment });
+      // Handle messages from React
+      webviewView.webview.onDidReceiveMessage(async (msg) => {
+        if (msg.command === "analyze-ui") {
+          await performAnalysis(model, msg.imageData, webviewView);
         }
-    } catch (err: any) {
-        vscode.window.showErrorMessage("Vision Error: " + err.message);
+      });
     }
+  };
+
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider("uxVisionView", provider)
+  );
 }
 
-function getWebviewContent(webview: vscode.Webview, context: vscode.ExtensionContext): string {
-    // Convert local paths to Webview URIs
-    const scriptUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(context.extensionUri, 'webview', 'dist', 'assets', 'index.js')
-    );
-    // const styleUri = webview.asWebviewUri(
-    //     vscode.Uri.joinPath(context.extensionUri, 'webview', 'dist', 'assets', 'index.css')
-    // );
+// 3. Functional Analysis Logic
+async function performAnalysis(model: any, base64Image: string, webviewView: vscode.WebviewView) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return;
 
-    return `<!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>UX-Vision</title>
-    </head>
-    <body>
-        <div id="root"></div>
-        <script type="module" src="${scriptUri}"></script>
-    </body>
-    </html>`;
+  try {
+    const prompt = "Compare this UI screenshot to this code. List UX discrepancies in JSON format.";
+    const imagePart = {
+      inlineData: { data: base64Image.split(",")[1], mimeType: "image/png" }
+    };
+
+    const result = await model.generateContent([prompt, imagePart, editor.document.getText()]);
+    const response = await result.response;
+
+    webviewView.webview.postMessage({
+      command: "analysis-result",
+      text: response.text()
+    });
+  } catch (err: any) {
+    vscode.window.showErrorMessage("Gemini Error: " + err.message);
+  }
 }
 
-export function deactivate() {}
+// 4. HTML Generator Function
+function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri) {
+  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "webview", "dist", "bundle.js"));
+  return `<html><body><div id="root"></div><script src="${scriptUri}"></script></body></html>`;
+}

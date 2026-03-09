@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
 /**
- * Access the VS Code API. 
- * Note: acquireVsCodeApi can only be called once in the lifetime of the webview.
+ * Access the VS Code API.
+ * In a Vite setup, we ensure this is available globally.
  */
 const vscode = (window as any).acquireVsCodeApi();
 
@@ -18,32 +18,27 @@ const App: React.FC = () => {
   const [issues, setIssues] = useState<UXIssue[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  // 1. Listen for messages from the Extension Host (extension.ts)
+  // Listen for messages from extension.ts
   useEffect(() => {
-    const messageListener = (event: MessageEvent) => {
+    const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-
-      switch (message.command) {
-        case 'analysis-result':
-          setLoading(false);
-          try {
-            // Gemini might return JSON inside markdown blocks
-            const cleanJson = message.text.replace(/```json|```/g, '').trim();
-            const parsed: UXIssue[] = JSON.parse(cleanJson);
-            setIssues(parsed);
-          } catch (err) {
-            console.error("Failed to parse Gemini response:", err);
-          }
-          break;
+      if (message.command === 'analysis-result') {
+        setLoading(false);
+        try {
+          // Clean the AI response in case it includes markdown wrappers
+          const cleanJson = message.text.replace(/```json|```/g, '').trim();
+          setIssues(JSON.parse(cleanJson));
+        } catch (err) {
+          console.error("Failed to parse Gemini JSON:", err);
+        }
       }
     };
 
-    window.addEventListener('message', messageListener);
-    return () => window.removeEventListener('message', messageListener);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // 2. Handle Image Upload and send to Gemini
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -53,7 +48,7 @@ const App: React.FC = () => {
       setPreviewImage(base64);
       setLoading(true);
 
-      // Send the image to extension.ts to trigger Gemini API
+      // Send input to Gemini via the Extension Host
       vscode.postMessage({
         command: 'analyze-ui',
         imageData: base64
@@ -62,107 +57,78 @@ const App: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  // 3. Request the extension host to apply a fix
-  const applyFix = (codeSnippet: string) => {
+  const requestFix = (code: string) => {
     vscode.postMessage({
       command: 'apply-fix',
-      code: codeSnippet
+      code: code
     });
   };
 
   return (
-    <div className="container">
+    <div className="ux-vision-app">
       <header>
-        <h1>UX-Vision Audit</h1>
-        <p>Compare design screenshots with your source code using Gemini 1.5 Pro.</p>
+        <h3>UX-Vision Audit</h3>
       </header>
 
-      <section className="upload-section">
-        <label className="file-input-label">
-          {loading ? 'Analyzing...' : 'Upload Design Screenshot'}
-          <input 
-            type="file" 
-            accept="image/*" 
-            onChange={handleImageChange} 
-            disabled={loading} 
-          />
+      <div className="upload-zone">
+        <input 
+          type="file" 
+          id="file-upload" 
+          accept="image/*" 
+          onChange={onFileUpload} 
+          hidden 
+        />
+        <label htmlFor="file-upload" className="upload-btn">
+          {loading ? 'Processing...' : 'Upload Screenshot'}
         </label>
-      </section>
+      </div>
 
       {previewImage && (
-        <div className="preview-container">
-          <img src={previewImage} alt="Design Preview" className="preview-img" />
+        <div className="preview-box">
+          <img src={previewImage} alt="Preview" />
         </div>
       )}
 
       
-      
-      <section className="results-section">
-        {loading && <div className="loader">Gemini is inspecting your UI...</div>}
+
+      <main className="results-container">
+        {loading && <div className="status">AI is analyzing your UI...</div>}
         
-        {!loading && issues.length > 0 && (
-          <div className="issues-list">
-            <h3>Discrepancies Found ({issues.length})</h3>
-            {issues.map((item, index) => (
-              <div key={index} className={`issue-card ${item.severity.toLowerCase()}`}>
-                <div className="issue-header">
-                  <span className="severity-badge">{item.severity}</span>
-                  <strong>{item.issue}</strong>
-                </div>
-                <div className="code-diff">
-                  <p>Suggested Fix:</p>
-                  <code>{item.suggestedFix}</code>
-                </div>
-                <button 
-                  className="fix-btn" 
-                  onClick={() => applyFix(item.suggestedFix)}
-                >
-                  Apply Fix
-                </button>
-              </div>
-            ))}
+        {issues.map((item, idx) => (
+          <div key={idx} className={`issue-card ${item.severity.toLowerCase()}`}>
+            <div className="card-header">
+              <span className="badge">{item.severity}</span>
+              <strong>{item.issue}</strong>
+            </div>
+            <pre>
+              <code>{item.suggestedFix}</code>
+            </pre>
+            <button onClick={() => requestFix(item.suggestedFix)}>
+              Apply Fix
+            </button>
           </div>
-        )}
-      </section>
+        ))}
+      </main>
 
       <style>{`
-        .container { padding: 15px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); }
-        h1 { font-size: 1.2rem; margin-bottom: 5px; }
-        .upload-section { margin: 20px 0; }
-        .file-input-label {
-          display: block;
-          padding: 10px;
-          background: var(--vscode-button-background);
-          color: var(--vscode-button-foreground);
-          text-align: center;
-          cursor: pointer;
-          border-radius: 4px;
+        .ux-vision-app { font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 10px; }
+        .upload-btn { 
+          display: block; width: 100%; padding: 8px; text-align: center;
+          background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+          cursor: pointer; border-radius: 2px;
         }
-        .file-input-label:hover { background: var(--vscode-button-hoverBackground); }
-        input[type="file"] { display: none; }
-        .preview-img { width: 100%; border-radius: 4px; margin-top: 10px; border: 1px solid var(--vscode-widget-border); }
+        .upload-btn:hover { background: var(--vscode-button-hoverBackground); }
+        .preview-box img { width: 100%; margin-top: 10px; border: 1px solid var(--vscode-widget-border); }
         .issue-card { 
-          background: var(--vscode-editor-background);
-          border: 1px solid var(--vscode-widget-border);
-          padding: 12px;
-          margin-bottom: 12px;
-          border-radius: 4px;
+          margin-top: 15px; padding: 10px; border-radius: 4px;
+          background: var(--vscode-sideBar-background); border: 1px solid var(--vscode-widget-border);
         }
-        .high { border-left: 4px solid var(--vscode-notificationsErrorIcon-foreground); }
-        .medium { border-left: 4px solid var(--vscode-notificationsWarningIcon-foreground); }
-        .low { border-left: 4px solid var(--vscode-notificationsInfoIcon-foreground); }
-        .severity-badge { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: var(--vscode-badge-background); margin-right: 8px; vertical-align: middle; }
-        code { display: block; background: #000; padding: 5px; margin-top: 5px; font-size: 11px; white-space: pre-wrap; }
-        .fix-btn {
-          margin-top: 10px;
-          width: 100%;
-          background: var(--vscode-button-secondaryBackground);
-          color: var(--vscode-button-secondaryForeground);
-          border: none;
-          padding: 5px;
-          cursor: pointer;
-        }
-        .fix-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+        .high { border-left: 4px solid var(--vscode-errorForeground); }
+        .medium { border-left: 4px solid var(--vscode-warningForeground); }
+        .low { border-left: 4px solid var(--vscode-infoForeground); }
+        .badge { font-size: 0.7rem; background: var(--vscode-badge-background); padding: 2px 4px; margin-right: 5px; }
+        pre { background: #1e1e1e; padding: 5px; overflow-x: auto; font-size: 0.8rem; }
+        button { width: 100%; margin-top: 5px; cursor: pointer; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; padding: 4px; }
       `}</style>
     </div>
   );
