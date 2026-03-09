@@ -8,17 +8,30 @@
   },
   "categories": [
     "Other"
+    
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
-  "onCommand":"ux-vision.start",
+  "onView":"uxVisionView",
   "contributes": {
-    "commands": [
-      {
-        "command": "ux-vision.start",
-        "title": "UX-Vision: Start"
-      }
-    ]
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ux-vision-explorer", 
+          "title": "UX Vision",
+          "icon": "media/icon.svg" 
+        }
+      ]
+    },
+    "views": {
+      "ux-vision-explorer": [ 
+        {
+          "type": "webview",
+          "id": "uxVisionView",
+          "name": "Audit Dashboard"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -26,16 +39,22 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "build:webview": "cd webview && npm run build",
+     "build": "npm run build:webview && npm run compile"
+   
   },
   "devDependencies": {
-    "@types/vscode": "^1.109.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
-    "typescript-eslint": "^8.56.1",
+    "@types/vscode": "^1.109.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.3",
     "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "typescript-eslint": "^8.56.1"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0"
   }
 }
