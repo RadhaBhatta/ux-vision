@@ -1,0 +1,17 @@
+{
+	"compilerOptions": {
+	  "module": "Node16",
+	  "target": "ES2022",
+	  "outDir": "out",
+	  "rootDir": "src", // This points to your extension logic
+	  "strict": true,
+	  "incremental": true,
+	  "esModuleInterop": true
+	},
+	"include": ["src/**/*"], // Explicitly only include the extension source
+	"exclude": [
+	  "node_modules",
+	  "webview",        // <--- Add this to ignore the React project
+	  "out"
+	]
+  }
